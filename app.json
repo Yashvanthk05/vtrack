@@ -1,7 +1,17 @@
 {
   "expo": {
-    "name": "vtrack",
-    "slug": "vtrack",
+    "notification": {
+      "icon": "./assets/icon.png",
+      "color": "#ffffff",
+      "ios": {
+        "bundleIdentifier": "com.yourapp.bundle",
+        "config": {
+          "googleServicesFile": "./GoogleService-Info.plist"
+        }
+      }
+    },
+    "name": "VTRACK",
+    "slug": "VTRACK",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -13,13 +23,22 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app requires access to your location to track your attendance even when the app is in the background."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION"
+      ],
+      "package": "com.yash05k.VTRACK"
     },
     "web": {
       "bundler": "metro",
@@ -31,6 +50,11 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "1179d682-43f6-49af-b69d-27f011ff5957"
+      }
     }
   }
 }
