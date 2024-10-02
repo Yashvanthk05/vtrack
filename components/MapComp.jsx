@@ -24,7 +24,6 @@ const MapComp = ({location,region}) => {
         initialRegion={region}
         showsUserLocation={true}
         followsUserLocation={true}
-        provider={null}
       >
         {location && (
           <Marker
@@ -48,7 +47,7 @@ export default MapComp
 const styles = StyleSheet.create({
     map: {
         width: '100%',
-        height: 200,
+        height: 500,
         borderRadius:20
     }
 })
