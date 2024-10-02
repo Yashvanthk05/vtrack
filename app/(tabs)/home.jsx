@@ -520,7 +520,7 @@ export default function Home() {
         <Text style={{fontWeight:'bold',textAlign:'left',fontSize:18}}>Working Time: {workmsg}</Text>
       </View>
 
-      <MapComp  location={location} region={region} />
+      {/* <MapComp  location={location} region={region} /> */}
       
     </SafeAreaView>:<Redirect href={'./'}/>}
     </ScrollView>
