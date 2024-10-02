@@ -6,6 +6,7 @@ import * as Location from 'expo-location';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import EvilIcons from '@expo/vector-icons/EvilIcons';
 import * as TaskManager from 'expo-task-manager';
+import * as BackgroundFetch from 'expo-background-fetch';
 import * as Notifications from 'expo-notifications';
 import { Redirect } from 'expo-router';
 import MapView, { Circle, Marker } from 'react-native-maps';
@@ -15,6 +16,8 @@ import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import MapComp from '../../components/MapComp';
 import {LogBox} from 'react-native';
+
+const BACKGROUND_NOTIFICATION_TASK = 'BACKGROUND-NOTIFICATION-TASK';
 
 export default function Home() {
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -232,26 +235,31 @@ export default function Home() {
   const punchInTime = attendance?.PunchIn ? convertTimestampToTime(attendance.PunchIn) : 'N/A';
   const punchOutTime = attendance?.PunchOut ? convertTimestampToTime(attendance.PunchOut) : 'N/A';
 
-  // TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
-  //   if (error) {
-  //     console.error("Error in background task", error);
-  //     return;
-  //   }
-
-  //   if (data) {
-  //     const { locations } = data;
-  //     if (locations && locations.length > 0) {
-  //       const { latitude, longitude } = locations[0].coords;
-  //       const distance = getDistanceFromLatLonInMeters(latitude, longitude, VIT_LATITUDE, VIT_LONGITUDE);
-
-  //       const userHasNotPunchedOut = attendance?.PunchOut?.seconds === 0;
-
-  //       // if (distance > RADIUS && userHasNotPunchedOut) {
-  //       //   await sendNotification("Reminder", "You have not punched out and you're outside VIT Chennai!");
-  //       // }
-  //     }
-  //   }
-  // });
+  TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
+    if (error) {
+      console.error('Background Task Error:', error);
+      return;
+    }
+  
+    if (data) {
+      const { locations } = data;
+      const location = locations[0]; // Get the latest location
+      const { latitude, longitude } = location.coords;
+  
+      // Perform the distance check
+      const distance = getDistanceFromLatLonInMeters(
+        latitude,
+        longitude,
+        VIT_LATITUDE,
+        VIT_LONGITUDE
+      );
+  
+      // Send a notification if the user is outside the geofence
+      if (distance > GEOFENCE_RADIUS) {
+        await sendNotification('You are outside VIT', 'Remember to punch out!');
+      }
+    }
+  });
 
   useEffect(() => {
     const requestPermissions = async () => {
@@ -260,6 +268,7 @@ export default function Home() {
         alert('Notification permissions not granted!');
       }
     };
+    
   
     requestPermissions();
   }, []);
@@ -271,26 +280,74 @@ export default function Home() {
     longitudeDelta: 0.02,
   });
 
+
+
+
+
+
+  useEffect(()=>{
+    const startTaskReg=async()=>{
+      await Location.startLocationUpdatesAsync(BACKGROUND_NOTIFICATION_TASK, {
+        accuracy: Location.Accuracy.High,
+        distanceInterval: 1,
+        timeInterval: 60000,
+        deferredUpdatesInterval: 1000,
+        showsBackgroundLocationIndicator: true,
+        foregroundService: {
+          notificationTitle: 'VTRACKING....',
+          notificationBody: 'Your location is being tracked in the background.',
+        },
+      });
+    }
+
+    const scheduleBackgroundTask = async () => {
+      try {
+        await BackgroundFetch.registerTaskAsync(BACKGROUND_NOTIFICATION_TASK, {
+          minimumInterval: 60,
+          stopOnTerminate: false,
+          startOnBoot: true,
+        });
+
+        console.log('Task registered successfully!');
+      } catch (error) {
+        console.log('Task registration failed:', error);
+      }
+    };
+    startTaskReg();
+    scheduleBackgroundTask();
+  },[])
+
+
+
+
+
+
+
+
   useEffect(() => {
     let notifyIntervalId = null;
     let punchOutNotifyIntervalId = null;
     let outsideVITNotifyId = null;
   
     // Store the working time update interval separately
-    const updateWorkingTime = (punchInTime, punchOutTime) => {
+    const updateWorkingTime = (punchInTime, punchOutTime,pout) => {
       let hasPunchedOut = false;
       let workingTime;
-  
-      if (punchOutTime) {
+      if (pout!="12:00:00 AM") {
         workingTime = punchOutTime - punchInTime;
         hasPunchedOut = true;
       } else {
         workingTime = new Date() - punchInTime; // If not punched out, calculate from current time
         const distance = getDistanceFromLatLonInMeters(latitude, longitude, VIT_LATITUDE, VIT_LONGITUDE);
-        if(distance>GEOFENCE_RADIUS && !outsideVITNotifyId){
+        // if(distance>GEOFENCE_RADIUS && !outsideVITNotifyId){
+        //   outsideVITNotifyId=setInterval(async()=>{
+        //     await sendNotification("Reminder","You have not Punched Out and You're Outside VIT Chennai. So Kindly Punch Out");
+        //   },60*1000);
+        // }
+        if(!isPointInPolygon(latitude,longitude) && !outsideVITNotifyId){
           outsideVITNotifyId=setInterval(async()=>{
             await sendNotification("Reminder","You have not Punched Out and You're Outside VIT Chennai. So Kindly Punch Out");
-          },15*60*1000);
+          },60*1000);
         }
       }
   
@@ -304,8 +361,8 @@ export default function Home() {
         setWorkMsg(`You punched out earlier. You had ${remainingTime} hour(s) left to complete 8 hours.`);
         if (!punchOutNotifyIntervalId) {
           punchOutNotifyIntervalId = setInterval(async () => {
-            await sendNotification("Notice", `You punched out earlier. You still had ${remainingTime} hour(s) left.`);
-          }, 15 * 60 * 1000); // Notify every 15 minutes
+            await sendNotification("Warning!!", `You punched out earlier. You still had ${remainingTime} hour(s) left.`);
+          }, 60*1000); // Notify every 15 minutes
         }
       } else if (!hasPunchedOut) {
         // Update working time if not punched out
@@ -316,9 +373,36 @@ export default function Home() {
           notifyIntervalId = setInterval(async () => {
             await sendNotification("Reminder", "You have worked 8 hours, you can punch out.");
             setWorkMsg("You have worked 8 hours, you can punch out.");
-          }, 15 * 60 *1000); // Notify every 15 minutes
+          }, 60 *1000); // Notify every 15 minutes
         }
       }
+    };
+
+    const polygon = [
+      { latitude: 12.84252844169831, longitude: 80.15087616357157},
+      { latitude: 12.842840448604258, longitude: 80.15132835492903}, 
+      { latitude: 12.843425673897842, longitude: 80.15140829659303}, 
+      { latitude: 12.843495941866225, longitude: 80.15127174078874},
+      { latitude: 12.845272900669434, longitude: 80.15240201746927},
+      { latitude: 12.844788565481585 , longitude: 80.1561051466986 },
+      { latitude: 12.8433955825647 , longitude: 80.15852235294946 },
+      { latitude: 12.837851343172668, longitude: 80.15531798138569  },
+      { latitude: 12.837851343172668, longitude: 80.15531798138569  }
+    ];
+
+    const isPointInPolygon = (x,y) => {
+      let inside = false;
+    
+      for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        const xi = polygon[i].latitude, yi = polygon[i].longitude;
+        const xj = polygon[j].latitude, yj = polygon[j].longitude;
+    
+        const intersect = ((yi > y) !== (yj > y)) &&
+                          (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+      }
+    
+      return inside;
     };
   
     const checkWorkingHours = async () => {
@@ -334,8 +418,8 @@ export default function Home() {
         return;
       }
   
-      // Call the working time update function separately
-      updateWorkingTime(punchInTime, punchOutTime);
+      const pout = attendance?.PunchOut ? convertTimestampToTime(attendance.PunchOut) : 'N/A';
+      updateWorkingTime(punchInTime, punchOutTime,pout);
     };
   
     // Check attendance and working time every second
@@ -347,7 +431,7 @@ export default function Home() {
       if (punchOutNotifyIntervalId) clearInterval(punchOutNotifyIntervalId);
       if(outsideVITNotifyId) clearInterval(outsideVITNotifyId);
     };
-  }, [attendance]);  // Only track attendance changes
+  },[attendance]);  // Only track attendance changes
   
   
   const convertTimestampToHMS = (timestamp) => {
@@ -436,7 +520,7 @@ export default function Home() {
         <Text style={{fontWeight:'bold',textAlign:'left',fontSize:18}}>Working Time: {workmsg}</Text>
       </View>
 
-      {/* <MapComp  location={location} region={region} />       */}
+      <MapComp  location={location} region={region} />
       
     </SafeAreaView>:<Redirect href={'./'}/>}
     </ScrollView>
